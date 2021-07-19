@@ -60,7 +60,7 @@
 
 <property>
   <name>fs.default.name</name>
-  <value>local</value>
+  <value>127.0.0.1:8866</value>
   <description>The name of the default file system.  Either the
   literal string "local" or a host:port for DFS.</description>
 </property>
