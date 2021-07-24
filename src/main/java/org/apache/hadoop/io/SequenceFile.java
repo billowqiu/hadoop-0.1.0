@@ -23,7 +23,6 @@ import java.util.logging.*;
 import java.net.InetAddress;
 import java.rmi.server.UID;
 import java.security.MessageDigest;
-import org.apache.lucene.util.PriorityQueue;
 import org.apache.hadoop.fs.*;
 import org.apache.hadoop.conf.*;
 import org.apache.hadoop.util.LogFormatter;

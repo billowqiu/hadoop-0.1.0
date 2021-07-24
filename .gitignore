@@ -25,3 +25,6 @@ hs_err_pid*
 build/
 .DS_Store
 target/
+.test.*
+test.*
+./dfs/

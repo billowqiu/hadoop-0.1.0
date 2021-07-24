@@ -21,7 +21,8 @@ import org.apache.hadoop.conf.*;
 import org.apache.hadoop.util.LogFormatter;
 
 import java.io.*;
-import java.util.logging.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**********************************************************
  * NameNode serves as both directory namespace manager and
@@ -56,7 +57,7 @@ import java.util.logging.*;
  * @author Mike Cafarella
  **********************************************************/
 public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
-    public static final Logger LOG = LogFormatter.getLogger("org.apache.hadoop.dfs.NameNode");
+    static private Logger logger = LoggerFactory.getLogger(NameNode.class);
 
     private FSNamesystem namesystem;
     private Server server;
@@ -329,7 +330,7 @@ public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
     }
 
     public Block[] blockReport(String sender, Block blocks[]) {
-        LOG.info("Block report from "+sender+": "+blocks.length+" blocks.");
+        logger.info("Block report from "+sender+": "+blocks.length+" blocks.");
         return namesystem.processReport(blocks, new UTF8(sender));
     }
 
@@ -387,10 +388,11 @@ public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
             }
           }
           format(conf);
+          logger.info("Formatted {}", dir);
           System.err.println("Formatted "+dir);
           System.exit(0);
         }
-
+        logger.info("start namenode....");
         NameNode namenode = new NameNode(conf);
         namenode.join();
     }

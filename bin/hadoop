@@ -86,14 +86,14 @@ CLASSPATH="${HADOOP_CONF_DIR}"
 CLASSPATH=${CLASSPATH}:$JAVA_HOME/lib/tools.jar
 
 # for developers, add Hadoop classes to CLASSPATH
-if [ -d "$HADOOP_HOME/build/classes" ]; then
-  CLASSPATH=${CLASSPATH}:$HADOOP_HOME/build/classes
+if [ -d "$HADOOP_HOME/target/classes" ]; then
+  CLASSPATH=${CLASSPATH}:$HADOOP_HOME/target/classes
 fi
-if [ -d "$HADOOP_HOME/build/webapps" ]; then
-  CLASSPATH=${CLASSPATH}:$HADOOP_HOME/build
+if [ -d "$HADOOP_HOME/target/webapps" ]; then
+  CLASSPATH=${CLASSPATH}:$HADOOP_HOME/target
 fi
-if [ -d "$HADOOP_HOME/build/test/classes" ]; then
-  CLASSPATH=${CLASSPATH}:$HADOOP_HOME/build/test/classes
+if [ -d "$HADOOP_HOME/target/test/classes" ]; then
+  CLASSPATH=${CLASSPATH}:$HADOOP_HOME/target/test/classes
 fi
 
 # so that filenames w/ spaces are handled correctly in loops below

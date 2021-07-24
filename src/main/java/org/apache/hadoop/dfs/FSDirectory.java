@@ -22,6 +22,8 @@ import java.util.*;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /*************************************************
  * FSDirectory stores the filesystem directory state.
@@ -34,6 +36,7 @@ import org.apache.hadoop.fs.FileUtil;
  * @author Mike Cafarella
  *************************************************/
 class FSDirectory implements FSConstants {
+    static private Logger logger = LoggerFactory.getLogger(FSDirectory.class);
     static String FS_IMAGE = "fsimage";
     static String NEW_FS_IMAGE = "fsimage.new";
     static String OLD_FS_IMAGE = "fsimage.old";
@@ -48,8 +51,9 @@ class FSDirectory implements FSConstants {
      * hierarchy.
      ******************************************************/
     class INode {
-        public String name;
-        public INode parent;
+        final static String ROOT_NAME = "";
+        public String name;     // path name
+        public INode parent;    // parent inode
         public TreeMap children = new TreeMap();
         public Block blocks[];
 
@@ -60,7 +64,12 @@ class FSDirectory implements FSConstants {
             this.parent = parent;
             this.blocks = blocks;
         }
-
+        /**
+         * Check whether this is the root inode.
+         */
+        boolean isRoot() {
+            return name.length() == 0;
+        }
         /**
          * Check whether it's a directory
          * @return
@@ -73,9 +82,11 @@ class FSDirectory implements FSConstants {
          * This is the external interface
          */
         INode getNode(String target) {
+            logger.debug("get path {}'s inode", target);
             if (! target.startsWith("/") || target.length() == 0) {
                 return null;
             } else if (parent == null && "/".equals(target)) {
+                logger.debug("find the root inode");
                 return this;
             } else {
                 Vector components = new Vector();
@@ -83,10 +94,12 @@ class FSDirectory implements FSConstants {
                 int slashid = 0;
                 while (start < target.length() && (slashid = target.indexOf('/', start)) >= 0) {
                     components.add(target.substring(start, slashid));
+                    logger.debug("add {} at start {}, slashid {}", target.substring(start, slashid), start, slashid);
                     start = slashid + 1;
                 }
                 if (start < target.length()) {
                     components.add(target.substring(start));
+                    logger.debug("add last {} at start {} ", target.substring(start), start);
                 }
                 return getNode(components, 0);
             }
@@ -95,15 +108,19 @@ class FSDirectory implements FSConstants {
         /**
          */
         INode getNode(Vector components, int index) {
+            logger.debug("current inode name {}, get node at index {}, with name {}", isRoot()? "ROOT" : name, index,components.elementAt(index));
             if (! name.equals((String) components.elementAt(index))) {
+                logger.error("current inode name {} not equeal {}", isRoot()? "ROOT" : name, components.elementAt(index));
                 return null;
             }
             if (index == components.size()-1) {
+                logger.info("succ traverse to the last element {}", components.elementAt(index));
                 return this;
             }
 
             // Check with children
             INode child = (INode) children.get(components.elementAt(index+1));
+            logger.debug("check child inode with name {}", child == null ? "null" : child.name);
             if (child == null) {
                 return null;
             } else {
@@ -242,7 +259,7 @@ class FSDirectory implements FSConstants {
         }
     }
 
-    INode rootDir = new INode("", null, null);
+    INode rootDir = new INode(INode.ROOT_NAME, null, null);
     TreeSet activeBlocks = new TreeSet();
     TreeMap activeLocks = new TreeMap();
     DataOutputStream editlog = null;
@@ -695,6 +712,7 @@ class FSDirectory implements FSConstants {
      */
     boolean mkdirs(String src) {
         src = normalizePath(new UTF8(src));
+        logger.debug("mkdirs for {}", src);
 
         // Use this to collect all the dirs we need to construct
         Vector v = new Vector();
@@ -704,9 +722,11 @@ class FSDirectory implements FSConstants {
 
         // All its parents
         String parent = DFSFile.getDFSParent(src);
+        logger.debug("get {} parent {}", src, parent);
         while (parent != null) {
             v.add(parent);
             parent = DFSFile.getDFSParent(parent);
+            logger.debug("get {} parent {}", src, parent);
         }
 
         // Now go backwards through list of dirs, creating along
@@ -715,6 +735,7 @@ class FSDirectory implements FSConstants {
         int numElts = v.size();
         for (int i = numElts - 1; i >= 0; i--) {
             String cur = (String) v.elementAt(i);
+            logger.debug("reverse mkdir {}", cur);
             INode inserted = unprotectedMkdir(cur);
             if (inserted != null) {
                 logEdit(OP_MKDIR, new UTF8(inserted.computeName()), null);

@@ -26,18 +26,66 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.mortbay.jetty</groupId>
-      <artifactId>org.mortbay.jetty</artifactId>
-      <version>5.1.4</version>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>1.7.5</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.lucene</groupId>
-      <artifactId>org.apache.lucene</artifactId>
-      <version>1.9.1.v200706111724</version>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-log4j12</artifactId>
+      <version>1.7.5</version>
+    </dependency>
+    <dependency>
+        <groupId>jetty</groupId>
+        <artifactId>org.mortbay.jetty</artifactId>
+        <version>5.1.6</version>
+    </dependency>
+    <!--
+    <dependency>
+      <groupId>org.mortbay.jetty</groupId>
+      <artifactId>org.mortbay.jetty</artifactId>
+      <version>5.1.6</version>
+    </dependency>
+    -->
+    <dependency>
+      <groupId>org.iq80.leveldb</groupId>
+      <artifactId>leveldb-api</artifactId>
+      <version>0.10</version>
+    </dependency>
+    <dependency>
+      <groupId>org.iq80.leveldb</groupId>
+      <artifactId>leveldb</artifactId>
+      <version>0.10</version>
+    </dependency>
+    <dependency>
+      <groupId>com.alibaba</groupId>
+      <artifactId>fastjson</artifactId>
+      <version>1.2.47</version>
     </dependency>
   </dependencies>
 
   <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+<!-- 效果等同于：mvn dependency:copy-dependencies -DoutputDirectory=lib -Dmaven.test.skip=true-->
+          <execution>
+            <id>copy</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>
+                ${project.basedir}/lib
+              </outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
     <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
       <plugins>
         <!-- clean lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#clean_Lifecycle -->
