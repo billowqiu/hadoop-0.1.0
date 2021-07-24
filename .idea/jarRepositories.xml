@@ -2,16 +2,6 @@
 <project version="4">
   <component name="RemoteRepositoriesConfiguration">
     <remote-repository>
-      <option name="id" value="kingsoft.ksc-snapshots" />
-      <option name="name" value="kingsoft.ksc-snapshots" />
-      <option name="url" value="http://10.66.3.65:8881/nexus/content/groups/public/" />
-    </remote-repository>
-    <remote-repository>
-      <option name="id" value="central" />
-      <option name="name" value="Central Repository" />
-      <option name="url" value="http://10.66.3.65:8881/nexus/content/groups/public/" />
-    </remote-repository>
-    <remote-repository>
       <option name="id" value="central" />
       <option name="name" value="Maven Central repository" />
       <option name="url" value="https://repo1.maven.org/maven2" />
