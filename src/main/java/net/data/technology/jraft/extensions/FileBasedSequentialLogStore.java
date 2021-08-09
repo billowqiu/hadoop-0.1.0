@@ -37,8 +37,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import net.data.technology.jraft.LogEntry;
 import net.data.technology.jraft.LogValueType;
@@ -55,7 +55,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
     private static final LogEntry zeroEntry = new LogEntry();
     private static final int BUFFER_SIZE = 1000;
 
-    private Logger logger;
+    static final private Logger logger = LoggerFactory.getLogger(FileBasedSequentialLogStore.class);
     private RandomAccessFile indexFile;
     private RandomAccessFile dataFile;
     private RandomAccessFile startIndexFile;
@@ -78,7 +78,6 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
         this.storeWriteLock = this.storeLock.writeLock();
         this.logContainer = Paths.get(logContainer);
         this.bufferSize = bufferSize;
-        this.logger = LogManager.getLogger(getClass());
         try{
             this.indexFile = new RandomAccessFile(this.logContainer.resolve(LOG_INDEX_FILE).toString(), "rw");
             this.dataFile = new RandomAccessFile(this.logContainer.resolve(LOG_STORE_FILE).toString(), "rw");
@@ -93,9 +92,9 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             this.entriesInStore = this.indexFile.length() / Long.BYTES;
             this.buffer = new LogBuffer(this.entriesInStore > this.bufferSize ? (this.entriesInStore + this.startIndex - this.bufferSize) : this.startIndex, this.bufferSize);
             this.fillBuffer();
-            this.logger.debug(String.format("log store started with entriesInStore=%d, startIndex=%d", this.entriesInStore, this.startIndex));
+            logger.debug(String.format("log store started with entriesInStore={}, startIndex={}", this.entriesInStore, this.startIndex));
         }catch(IOException exception){
-            this.logger.error("failed to access log store", exception);
+            logger.error("failed to access log store", exception);
         }
     }
 
@@ -142,7 +141,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             this.buffer.append(logEntry);
             return this.entriesInStore + this.startIndex - 1;
         }catch(IOException exception){
-            this.logger.error("failed to append a log entry to store", exception);
+            logger.error("failed to append a log entry to store", exception);
             throw new RuntimeException(exception.getMessage(), exception);
         }finally{
             this.storeWriteLock.unlock();
@@ -196,7 +195,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             this.buffer.append(logEntry);
             this.entriesInStore = index;
         }catch(IOException exception){
-            this.logger.error("failed to write a log entry at a specific index to store", exception);
+            logger.error("failed to write a log entry at a specific index to store", exception);
             throw new RuntimeException(exception.getMessage(), exception);
         }finally{
             this.storeWriteLock.unlock();
@@ -254,7 +253,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
 
             return entries;
         }catch(IOException exception){
-            this.logger.error("failed to read entries from store", exception);
+            logger.error("failed to read entries from store", exception);
             throw new RuntimeException(exception.getMessage(), exception);
         }
     }
@@ -290,7 +289,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             this.read(this.dataFile, logData);
             return new LogEntry(BinaryUtils.bytesToLong(logData, 0), Arrays.copyOfRange(logData, Long.BYTES + 1, logData.length), LogValueType.fromByte(logData[Long.BYTES]));
         }catch(IOException exception){
-            this.logger.error("failed to read files to get the specified entry");
+            logger.error("failed to read files to get the specified entry");
             throw new RuntimeException(exception.getMessage(), exception);
         }finally{
             this.storeWriteLock.unlock();
@@ -334,7 +333,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             gzipStream.close();
             return memoryStream.toByteArray();
         }catch(IOException exception){
-            this.logger.error("failed to read files to read data for packing");
+            logger.error("failed to read files to read data for packing");
             throw new RuntimeException(exception.getMessage(), exception);
         }finally{
             this.storeWriteLock.unlock();
@@ -380,7 +379,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             this.buffer.reset(this.entriesInStore > this.bufferSize ? this.entriesInStore + this.startIndex - this.bufferSize : this.startIndex);
             this.fillBuffer();
         }catch(IOException exception){
-            this.logger.error("failed to write files to unpack logs for data");
+            logger.error("failed to write files to unpack logs for data");
             throw new RuntimeException(exception.getMessage(), exception);
         }finally{
             this.storeWriteLock.unlock();
@@ -444,7 +443,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
                 return true;
             }
         }catch(Throwable error){
-            this.logger.error("fail to compact the logs due to error", error);
+            logger.error("fail to compact the logs due to error", error);
             this.restore();
             return false;
         }finally{
@@ -459,7 +458,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             this.indexFile.close();
             this.startIndexFile.close();
         }catch(IOException exception){
-            this.logger.error("failed to close data/index file(s)", exception);
+            logger.error("failed to close data/index file(s)", exception);
         }finally{
             this.storeWriteLock.unlock();
         }
@@ -489,7 +488,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             this.startIndexFile = new RandomAccessFile(this.logContainer.resolve(LOG_START_INDEX_FILE).toString(), "rw");
         }catch(Exception error){
             // this is fatal...
-            this.logger.fatal("cannot restore from failure, please manually restore the log files");
+            logger.error("cannot restore from failure, please manually restore the log files");
             System.exit(-1);
         }
     }
@@ -503,7 +502,7 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             Files.copy(this.logContainer.resolve(LOG_STORE_FILE), this.logContainer.resolve(LOG_STORE_FILE_BAK), StandardCopyOption.REPLACE_EXISTING);
             Files.copy(this.logContainer.resolve(LOG_START_INDEX_FILE), this.logContainer.resolve(LOG_START_INDEX_FILE_BAK), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            this.logger.error("failed to create a backup folder", e);
+            logger.error("failed to create a backup folder", e);
             throw new RuntimeException("failed to create a backup folder");
         }
     }
@@ -517,11 +516,11 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             }
 
             if(offset < buffer.length){
-                this.logger.error(String.format("only %d bytes are read while %d bytes are desired, bad file", offset, buffer.length));
+                logger.error(String.format("only {} bytes are read while {} bytes are desired, bad file", offset, buffer.length));
                 throw new RuntimeException("bad file, insufficient file data for reading");
             }
         }catch(IOException exception){
-            this.logger.error("failed to read and fill the buffer", exception);
+            logger.error("failed to read and fill the buffer", exception);
             throw new RuntimeException(exception.getMessage(), exception);
         }
     }
@@ -535,11 +534,11 @@ public class FileBasedSequentialLogStore implements SequentialLogStore {
             }
 
             if(offset < buffer.length){
-                this.logger.error(String.format("only %d bytes are read while %d bytes are desired, bad file", offset, buffer.length));
+                logger.error(String.format("only {} bytes are read while {} bytes are desired, bad file", offset, buffer.length));
                 throw new RuntimeException("bad file, insufficient file data for reading");
             }
         }catch(IOException exception){
-            this.logger.error("failed to read and fill the buffer", exception);
+            logger.error("failed to read and fill the buffer", exception);
             throw new RuntimeException(exception.getMessage(), exception);
         }
     }

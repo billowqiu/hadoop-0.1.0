@@ -34,7 +34,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import net.data.technology.jraft.extensions.FileBasedServerStateManager;
-import net.data.technology.jraft.extensions.Log4jLoggerFactory;
 import net.data.technology.jraft.extensions.RpcTcpClientFactory;
 import net.data.technology.jraft.extensions.RpcTcpListener;
 
@@ -94,7 +93,6 @@ public class App
                 mp,
                 raftParameters,
                 new RpcTcpListener(localEndpoint.getPort(), executor),
-                new Log4jLoggerFactory(),
                 new RpcTcpClientFactory(executor),
                 executor);
         RaftConsensus.run(context);
@@ -104,7 +102,7 @@ public class App
     }
 
     private static void executeAsClient(ClusterConfiguration configuration, ExecutorService executor) throws Exception{
-        RaftClient client = new RaftClient(new RpcTcpClientFactory(executor), configuration, new Log4jLoggerFactory());
+        RaftClient client = new RaftClient(new RpcTcpClientFactory(executor), configuration);
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
         while(true){
             System.out.print("Message:");

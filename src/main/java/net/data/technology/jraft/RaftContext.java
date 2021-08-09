@@ -23,23 +23,23 @@ public class RaftContext {
 
     private ServerStateManager serverStateManager;
     private RpcListener rpcListener;
-    private LoggerFactory loggerFactory;
+//    private LoggerFactory loggerFactory;
     private RpcClientFactory rpcClientFactory;
     private StateMachine stateMachine;
     private RaftParameters raftParameters;
     private ScheduledThreadPoolExecutor scheduledExecutor;
 
-    public RaftContext(ServerStateManager stateManager, StateMachine stateMachine, RaftParameters raftParameters, RpcListener rpcListener, LoggerFactory logFactory, RpcClientFactory rpcClientFactory){
-        this(stateManager, stateMachine, raftParameters, rpcListener, logFactory, rpcClientFactory, null);
+    public RaftContext(ServerStateManager stateManager, StateMachine stateMachine, RaftParameters raftParameters, RpcListener rpcListener, RpcClientFactory rpcClientFactory){
+        this(stateManager, stateMachine, raftParameters, rpcListener, rpcClientFactory, null);
     }
 
-    public RaftContext(ServerStateManager stateManager, StateMachine stateMachine, RaftParameters raftParameters, RpcListener rpcListener, LoggerFactory logFactory, RpcClientFactory rpcClientFactory, ScheduledThreadPoolExecutor scheduledExecutor){
+    public RaftContext(ServerStateManager stateManager, StateMachine stateMachine, RaftParameters raftParameters, RpcListener rpcListener, RpcClientFactory rpcClientFactory, ScheduledThreadPoolExecutor scheduledExecutor){
         this.serverStateManager = stateManager;
         this.stateMachine = stateMachine;
         this.raftParameters = raftParameters;
         this.rpcClientFactory = rpcClientFactory;
         this.rpcListener = rpcListener;
-        this.loggerFactory = logFactory;
+//        this.loggerFactory = logFactory;
         this.scheduledExecutor = scheduledExecutor;
         if(this.scheduledExecutor == null){
             this.scheduledExecutor = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors());
@@ -67,9 +67,9 @@ public class RaftContext {
         return rpcListener;
     }
 
-    public LoggerFactory getLoggerFactory() {
-        return loggerFactory;
-    }
+//    public LoggerFactory getLoggerFactory() {
+//        return loggerFactory;
+//    }
 
     public RpcClientFactory getRpcClientFactory() {
         return rpcClientFactory;

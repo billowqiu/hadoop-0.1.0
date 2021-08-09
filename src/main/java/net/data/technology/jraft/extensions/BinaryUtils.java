@@ -23,7 +23,8 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.logging.log4j.LogManager;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import net.data.technology.jraft.LogEntry;
 import net.data.technology.jraft.LogValueType;
@@ -32,7 +33,7 @@ import net.data.technology.jraft.RaftRequestMessage;
 import net.data.technology.jraft.RaftResponseMessage;
 
 public class BinaryUtils {
-
+    static final private Logger logger = LoggerFactory.getLogger(BinaryUtils.class);
     public static final int RAFT_RESPONSE_HEADER_SIZE = Integer.BYTES * 2 + Long.BYTES * 2 + 2;
     public static final int RAFT_REQUEST_HEADER_SIZE = Integer.BYTES * 3 + Long.BYTES * 4 + 1;
 
@@ -152,7 +153,7 @@ public class BinaryUtils {
             output.flush();
             return output.toByteArray();
         }catch(IOException exception){
-            LogManager.getLogger("BinaryUtil").error("failed to serialize LogEntry to memory", exception);
+            logger.error("failed to serialize LogEntry to memory", exception);
             throw new RuntimeException("Running into bad situation, where memory may not be sufficient", exception);
         }
     }

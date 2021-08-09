@@ -31,8 +31,8 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BiConsumer;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import net.data.technology.jraft.RaftMessageHandler;
 import net.data.technology.jraft.RaftRequestMessage;
@@ -41,7 +41,7 @@ import net.data.technology.jraft.RpcListener;
 
 public class RpcTcpListener implements RpcListener {
     private int port;
-    private Logger logger;
+    static final private Logger logger = LoggerFactory.getLogger(RpcTcpListener.class);
     private AsynchronousServerSocketChannel listener;
     private ExecutorService executorService;
     private List<AsynchronousSocketChannel> connections;
@@ -49,7 +49,6 @@ public class RpcTcpListener implements RpcListener {
     public RpcTcpListener(int port, ExecutorService executorService){
         this.port = port;
         this.executorService = executorService;
-        this.logger = LogManager.getLogger(getClass());
         this.connections = Collections.synchronizedList(new LinkedList<AsynchronousSocketChannel>());
     }
 

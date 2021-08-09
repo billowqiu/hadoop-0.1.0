@@ -22,14 +22,15 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.concurrent.ExecutorService;
 
-import org.apache.logging.log4j.LogManager;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import net.data.technology.jraft.RpcClient;
 import net.data.technology.jraft.RpcClientFactory;
 
 public class RpcTcpClientFactory implements RpcClientFactory {
     private ExecutorService executorService;
-
+    static final private Logger logger = LoggerFactory.getLogger(RpcTcpClientFactory.class);
     public RpcTcpClientFactory(ExecutorService executorService){
         this.executorService = executorService;
     }
@@ -40,7 +41,7 @@ public class RpcTcpClientFactory implements RpcClientFactory {
             URI uri = new URI(endpoint);
             return new RpcTcpClient(new InetSocketAddress(uri.getHost(), uri.getPort()), this.executorService);
         } catch (URISyntaxException e) {
-            LogManager.getLogger(getClass()).error(String.format("%s is not a valid uri", endpoint));
+            logger.error(String.format("{} is not a valid uri", endpoint));
             throw new IllegalArgumentException("invalid uri for endpoint");
         }
     }

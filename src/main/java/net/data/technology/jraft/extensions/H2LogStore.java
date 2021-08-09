@@ -33,15 +33,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import net.data.technology.jraft.LogEntry;
 import net.data.technology.jraft.LogValueType;
 import net.data.technology.jraft.SequentialLogStore;
 
 public class H2LogStore implements SequentialLogStore {
-
+    static final private Logger logger = LoggerFactory.getLogger(H2LogStore.class);
     private static final String TABLE_NAME = "LogStore";
     private static final String CREATE_SEQUENCE_SQL = "CREATE SEQUENCE LogSequence START WITH 1 INCREMENT BY 1";
     private static final String CREATE_TABLE_SQL = "CREATE TABLE LogStore(id bigint default LogSequence.nextval primary key, term bigint, dtype tinyint, data blob)";
@@ -54,13 +54,11 @@ public class H2LogStore implements SequentialLogStore {
     private static final String SELECT_ENTRY_SQL = "SELECT * FROM LogStore WHERE id=?";
 
     private Connection connection;
-    private Logger logger;
     private AtomicLong startIndex;
     private AtomicLong nextIndex;
     private LogEntry lastEntry;
 
     public H2LogStore(String path){
-        this.logger = LogManager.getLogger(this.getClass());
         this.startIndex = new AtomicLong();
         this.nextIndex = new AtomicLong();
         this.lastEntry = new LogEntry(0, null, LogValueType.Application);
@@ -103,7 +101,7 @@ public class H2LogStore implements SequentialLogStore {
                 rs.close();
             }
         }catch(Throwable error){
-            this.logger.error("failed to load or create log store database", error);
+            logger.error("failed to load or create log store database", error);
             throw new RuntimeException("failed to load or create a log store", error);
         }
     }
@@ -134,7 +132,7 @@ public class H2LogStore implements SequentialLogStore {
             this.lastEntry = logEntry;
             return this.nextIndex.getAndIncrement();
         }catch(Throwable error){
-            this.logger.error("failed to insert a new entry", error);
+            logger.error("failed to insert a new entry", error);
             throw new RuntimeException("log store error", error);
         }
     }
@@ -162,7 +160,7 @@ public class H2LogStore implements SequentialLogStore {
             this.nextIndex.set(index + 1);
             this.lastEntry = logEntry;
         }catch(Throwable error){
-            this.logger.error("failed to write an entry at a specific index", error);
+            logger.error("failed to write an entry at a specific index", error);
             throw new RuntimeException("log store error", error);
         }
     }
@@ -186,7 +184,7 @@ public class H2LogStore implements SequentialLogStore {
             rs.close();
             return entries.toArray(new LogEntry[0]);
         }catch(Throwable error){
-            this.logger.error("failed to retrieve a range of entries", error);
+            logger.error("failed to retrieve a range of entries", error);
             throw new RuntimeException("log store error", error);
         }
     }
@@ -208,7 +206,7 @@ public class H2LogStore implements SequentialLogStore {
             rs.close();
             return null;
         }catch(Throwable error){
-            this.logger.error("failed to retrieve an entry at a specific index", error);
+            logger.error("failed to retrieve an entry at a specific index", error);
             throw new RuntimeException("log store error", error);
         }
     }
@@ -243,7 +241,7 @@ public class H2LogStore implements SequentialLogStore {
             gzipStream.close();
             return memoryStream.toByteArray();
         }catch(Throwable error){
-            this.logger.error("failed to pack log entries", error);
+            logger.error("failed to pack log entries", error);
             throw new RuntimeException("log store error", error);
         }
     }
@@ -287,7 +285,7 @@ public class H2LogStore implements SequentialLogStore {
             this.connection.commit();
             gzipStream.close();
         }catch(Throwable error){
-            this.logger.error("failed to apply log pack", error);
+            logger.error("failed to apply log pack", error);
             throw new RuntimeException("log store error", error);
         }
     }
@@ -325,7 +323,7 @@ public class H2LogStore implements SequentialLogStore {
             rs.close();
             return true;
         }catch(Throwable error){
-            this.logger.error("failed to compact the log store", error);
+            logger.error("failed to compact the log store", error);
             throw new RuntimeException("log store error", error);
         }
     }
@@ -335,7 +333,7 @@ public class H2LogStore implements SequentialLogStore {
             try {
                 this.connection.close();
             } catch (SQLException e) {
-                this.logger.error("failed to close the connection", e);
+                logger.error("failed to close the connection", e);
             }
         }
     }
@@ -353,13 +351,13 @@ public class H2LogStore implements SequentialLogStore {
             }
 
             if(offset < buffer.length){
-                this.logger.error(String.format("only %d bytes are read while %d bytes are desired, bad file", offset, buffer.length));
+                logger.error(String.format("only {} bytes are read while {} bytes are desired, bad file", offset, buffer.length));
                 throw new RuntimeException("bad stream, insufficient file data for reading");
             }
 
             return true;
         }catch(IOException exception){
-            this.logger.error("failed to read and fill the buffer", exception);
+            logger.error("failed to read and fill the buffer", exception);
             throw new RuntimeException(exception.getMessage(), exception);
         }
     }

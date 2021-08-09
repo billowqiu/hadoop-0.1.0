@@ -36,11 +36,13 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class RaftServer implements RaftMessageHandler {
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
+public class RaftServer implements RaftMessageHandler {
+    static final private Logger logger = LoggerFactory.getLogger(RaftServer.class);
     private static final int DEFAULT_SNAPSHOT_SYNC_BLOCK_SIZE = 4 * 1024;
     private static final Comparator<Long> indexComparator = new Comparator<Long>(){
-
         @Override
         public int compare(Long arg0, Long arg1) {
             return (int)(arg1.longValue() - arg0.longValue());
@@ -57,7 +59,6 @@ public class RaftServer implements RaftMessageHandler {
     private boolean electionCompleted;
     private SequentialLogStore logStore;
     private StateMachine stateMachine;
-    private Logger logger;
     private Random random;
     private Callable<Void> electionTimeoutTask;
     private ClusterConfiguration config;
@@ -83,10 +84,8 @@ public class RaftServer implements RaftMessageHandler {
         this.electionCompleted = false;
         this.snapshotInProgress = new AtomicInteger(0);
         this.context = context;
-        this.logger = context.getLoggerFactory().getLogger(this.getClass());
         this.random = new Random(Calendar.getInstance().getTimeInMillis());
         this.electionTimeoutTask = new Callable<Void>(){
-
             @Override
             public Void call() throws Exception {
                 handleElectionTimeout();
@@ -122,7 +121,7 @@ public class RaftServer implements RaftMessageHandler {
         for(long i = Math.max(this.state.getCommitIndex() + 1, this.logStore.getStartIndex()); i < this.logStore.getFirstAvailableIndex(); ++i){
             LogEntry logEntry = this.logStore.getLogEntryAt(i);
             if(logEntry.getValueType() == LogValueType.Configuration){
-                this.logger.info("detect a configuration change that is not committed yet at index %d", i);
+                logger.info("detect a configuration change that is not committed yet at index {}", i);
                 this.configChanging = true;
                 break;
             }
@@ -139,7 +138,7 @@ public class RaftServer implements RaftMessageHandler {
         this.role = ServerRole.Follower;
         new Thread(this.commitingThread).start();
         this.restartElectionTimer();
-        this.logger.info("Server %d started", this.id);
+        logger.info("Server {} started", this.id);
     }
 
     public RaftMessageSender createMessageSender(){
@@ -148,8 +147,8 @@ public class RaftServer implements RaftMessageHandler {
 
     @Override
     public RaftResponseMessage processRequest(RaftRequestMessage request) {
-        this.logger.debug(
-                "Receive a %s message from %d with LastLogIndex=%d, LastLogTerm=%d, EntriesLength=%d, CommitIndex=%d and Term=%d",
+        logger.debug(
+                "Receive a {} message from {} with LastLogIndex={}, LastLogTerm={}, EntriesLength={}, CommitIndex={} and Term={}",
                 request.getMessageType().toString(),
                 request.getSource(),
                 request.getLastLogIndex(),
@@ -171,8 +170,8 @@ public class RaftServer implements RaftMessageHandler {
         }
 
         if(response != null){
-            this.logger.debug(
-                    "Response back a %s message to %d with Accepted=%s, Term=%d, NextIndex=%d",
+            logger.debug(
+                    "Response back a {} message to {} with Accepted={}, Term={}, NextIndex={}",
                     response.getMessageType().toString(),
                     response.getDestination(),
                     String.valueOf(response.isAccepted()),
@@ -196,7 +195,7 @@ public class RaftServer implements RaftMessageHandler {
             if(this.role == ServerRole.Candidate){
                 this.becomeFollower();
             }else if(this.role == ServerRole.Leader){
-                this.logger.error("Receive AppendEntriesRequest from another leader(%d) with same term, there must be a bug, server exits", request.getSource());
+                logger.error("Receive AppendEntriesRequest from another leader({}) with same term, there must be a bug, server exits", request.getSource());
                 this.stateMachine.exit(-1);
             }else{
                 this.restartElectionTimer();
@@ -239,7 +238,7 @@ public class RaftServer implements RaftMessageHandler {
                 if(oldEntry.getValueType() == LogValueType.Application){
                     this.stateMachine.rollback(index, oldEntry.getValue());
                 }else if(oldEntry.getValueType() == LogValueType.Configuration){
-                    this.logger.info("revert a previous config change to config at %d", this.config.getLogIndex());
+                    logger.info("revert a previous config change to config at {}", this.config.getLogIndex());
                     this.configChanging = false;
                 }
 
@@ -248,7 +247,7 @@ public class RaftServer implements RaftMessageHandler {
                 if (logEntry.getValueType() == LogValueType.Application) {
                     this.stateMachine.preCommit(index, logEntry.getValue());
                 } else if (logEntry.getValueType() == LogValueType.Configuration) {
-                    this.logger.info("received a configuration change at index %d from leader", index);
+                    logger.info("received a configuration change at index {} from leader", index);
                     this.configChanging = true;
                 }
 
@@ -261,7 +260,7 @@ public class RaftServer implements RaftMessageHandler {
                 LogEntry logEntry = logEntries[logIndex ++];
                 long indexForEntry = this.logStore.append(logEntry);
                 if(logEntry.getValueType() == LogValueType.Configuration){
-                    this.logger.info("received a configuration change at index %d from leader", indexForEntry);
+                    logger.info("received a configuration change at index {} from leader", indexForEntry);
                     this.configChanging = true;
                 } else if(logEntry.getValueType() == LogValueType.Application) {
                     this.stateMachine.preCommit(indexForEntry, logEntry.getValue());
@@ -339,7 +338,7 @@ public class RaftServer implements RaftMessageHandler {
     private synchronized void handleElectionTimeout(){
         if(this.steppingDown > 0){
             if(--this.steppingDown == 0){
-                this.logger.info("no hearing further news from leader, remove this server from config and step down");
+                logger.info("no hearing further news from leader, remove this server from config and step down");
                 ClusterServer server = this.config.getServer(this.id);
                 if(server != null){
                     this.config.getServers().remove(server);
@@ -350,25 +349,25 @@ public class RaftServer implements RaftMessageHandler {
                 return;
             }
 
-            this.logger.info("stepping down (cycles left: %d), skip this election timeout event", this.steppingDown);
+            logger.info("stepping down (cycles left: {}), skip this election timeout event", this.steppingDown);
             this.restartElectionTimer();
             return;
         }
 
         if(this.catchingUp){
             // this is a new server for the cluster, will not send out vote request until the config that includes this server is committed
-            this.logger.info("election timeout while joining the cluster, ignore it.");
+            logger.info("election timeout while joining the cluster, ignore it.");
             this.restartElectionTimer();
             return;
         }
 
         if(this.role == ServerRole.Leader){
-            this.logger.error("A leader should never encounter election timeout, illegal application state, stop the application");
+            logger.error("A leader should never encounter election timeout, illegal application state, stop the application");
             this.stateMachine.exit(-1);
             return;
         }
 
-        this.logger.debug("Election timeout, change to Candidate");
+        logger.debug("Election timeout, change to Candidate");
         this.state.increaseTerm();
         this.state.setVotedFor(-1);
         this.role = ServerRole.Candidate;
@@ -386,7 +385,7 @@ public class RaftServer implements RaftMessageHandler {
 
     private void requestVote(){
         // vote for self
-        this.logger.info("requestVote started with term %d", this.state.getTerm());
+        logger.info("requestVote started with term {}", this.state.getTerm());
         this.state.setVotedFor(this.id);
         this.context.getServerStateManager().persistState(this.state);
         this.votesGranted += 1;
@@ -407,7 +406,7 @@ public class RaftServer implements RaftMessageHandler {
             request.setLastLogIndex(this.logStore.getFirstAvailableIndex() - 1);
             request.setLastLogTerm(this.termForLastLog(this.logStore.getFirstAvailableIndex() - 1));
             request.setTerm(this.state.getTerm());
-            this.logger.debug("send %s to server %d with term %d", RaftMessageType.RequestVoteRequest.toString(), peer.getId(), this.state.getTerm());
+            logger.debug("send {} to server {} with term {}", RaftMessageType.RequestVoteRequest.toString(), peer.getId(), this.state.getTerm());
             peer.SendRequest(request).whenCompleteAsync((RaftResponseMessage response, Throwable error) -> {
                 handlePeerResponse(response, error);
             }, this.context.getScheduledExecutor());
@@ -432,24 +431,24 @@ public class RaftServer implements RaftMessageHandler {
                     try{
                         handlePeerResponse(response, error);
                     }catch(Throwable err){
-                        this.logger.error("Uncaught exception %s", err.toString());
+                        logger.error("Uncaught exception {}", err.toString());
                     }
                 }, this.context.getScheduledExecutor());
             return true;
         }
 
-        this.logger.debug("Server %d is busy, skip the request", peer.getId());
+        logger.debug("Server {} is busy, skip the request", peer.getId());
         return false;
     }
 
     private synchronized void handlePeerResponse(RaftResponseMessage response, Throwable error){
         if(error != null){
-            this.logger.info("peer response error: %s", error.getMessage());
+            logger.info("peer response error: {}", error.getMessage());
             return;
         }
 
-        this.logger.debug(
-                "Receive a %s message from peer %d with Result=%s, Term=%d, NextIndex=%d",
+        logger.debug(
+                "Receive a {} message from peer {} with Result={}, Term={}, NextIndex={}",
                 response.getMessageType().toString(),
                 response.getSource(),
                 String.valueOf(response.isAccepted()),
@@ -462,7 +461,7 @@ public class RaftServer implements RaftMessageHandler {
 
         // Ignore the response that with lower term for safety
         if(response.getTerm() < this.state.getTerm()){
-            this.logger.info("Received a peer response from %d that with lower term value %d v.s. %d", response.getSource(), response.getTerm(), this.state.getTerm());
+            logger.info("Received a peer response from {} that with lower term value {} v.s. {}", response.getSource(), response.getTerm(), this.state.getTerm());
             return;
         }
 
@@ -473,7 +472,7 @@ public class RaftServer implements RaftMessageHandler {
         }else if(response.getMessageType() == RaftMessageType.InstallSnapshotResponse){
             this.handleInstallSnapshotResponse(response);
         }else{
-            this.logger.error("Received an unexpected message %s for response, system exits.", response.getMessageType().toString());
+            logger.error("Received an unexpected message {} for response, system exits.", response.getMessageType().toString());
             this.stateMachine.exit(-1);
         }
     }
@@ -481,7 +480,7 @@ public class RaftServer implements RaftMessageHandler {
     private void handleAppendEntriesResponse(RaftResponseMessage response){
         PeerServer peer = this.peers.get(response.getSource());
         if(peer == null){
-            this.logger.info("the response is from an unkonw peer %d", response.getSource());
+            logger.info("the response is from an unkonw peer {}", response.getSource());
             return;
         }
 
@@ -525,7 +524,7 @@ public class RaftServer implements RaftMessageHandler {
     private void handleInstallSnapshotResponse(RaftResponseMessage response){
         PeerServer peer = this.peers.get(response.getSource());
         if(peer == null){
-            this.logger.info("the response is from an unkonw peer %d", response.getSource());
+            logger.info("the response is from an unkonw peer {}", response.getSource());
             return;
         }
 
@@ -535,24 +534,24 @@ public class RaftServer implements RaftMessageHandler {
             synchronized(peer){
                 SnapshotSyncContext context = peer.getSnapshotSyncContext();
                 if(context == null){
-                    this.logger.info("no snapshot sync context for this peer, drop the response");
+                    logger.info("no snapshot sync context for this peer, drop the response");
                     needToCatchup = false;
                 }else{
                     if(response.getNextIndex() >= context.getSnapshot().getSize()){
-                        this.logger.debug("snapshot sync is done");
+                        logger.debug("snapshot sync is done");
                         peer.setNextLogIndex(context.getSnapshot().getLastLogIndex() + 1);
                         peer.setMatchedIndex(context.getSnapshot().getLastLogIndex());
                         peer.setSnapshotInSync(null);
                         needToCatchup = peer.clearPendingCommit() || response.getNextIndex() < this.logStore.getFirstAvailableIndex();
                     }else{
-                        this.logger.debug("continue to sync snapshot at offset %d", response.getNextIndex());
+                        logger.debug("continue to sync snapshot at offset {}", response.getNextIndex());
                         context.setOffset(response.getNextIndex());
                     }
                 }
             }
 
         }else{
-            this.logger.info("peer declines to install the snapshot, will retry");
+            logger.info("peer declines to install the snapshot, will retry");
         }
 
         // This may not be a leader anymore, such as the response was sent out long time ago
@@ -565,13 +564,13 @@ public class RaftServer implements RaftMessageHandler {
 
     private void handleVotingResponse(RaftResponseMessage response){
         if(this.votedServers.contains(response.getSource())) {
-            this.logger.info("Duplicate vote from %d form term %d", response.getSource(), this.state.getTerm());
+            logger.info("Duplicate vote from {} form term {}", response.getSource(), this.state.getTerm());
             return;
         }
 
         this.votedServers.add(response.getSource());
         if(this.electionCompleted){
-            this.logger.info("Election completed, will ignore the voting result from this server");
+            logger.info("Election completed, will ignore the voting result from this server");
             return;
         }
 
@@ -585,14 +584,14 @@ public class RaftServer implements RaftMessageHandler {
 
         // got a majority set of granted votes
         if(this.votesGranted > (this.peers.size() + 1) / 2){
-            this.logger.info("Server is elected as leader for term %d", this.state.getTerm());
+            logger.info("Server is elected as leader for term {}", this.state.getTerm());
             this.electionCompleted = true;
             this.becomeLeader();
         }
     }
 
     private synchronized void handleHeartbeatTimeout(PeerServer peer){
-        this.logger.debug("Heartbeat timeout for %d", peer.getId());
+        logger.debug("Heartbeat timeout for {}", peer.getId());
         if(this.role == ServerRole.Leader){
             this.requestAppendEntries(peer);
 
@@ -601,11 +600,11 @@ public class RaftServer implements RaftMessageHandler {
                     // Schedule another heartbeat if heartbeat is still enabled
                     peer.setHeartbeatTask(this.context.getScheduledExecutor().schedule(peer.getHeartbeartHandler(), peer.getCurrentHeartbeatInterval(), TimeUnit.MILLISECONDS));
                 }else{
-                    this.logger.debug("heartbeat is disabled for peer %d", peer.getId());
+                    logger.debug("heartbeat is disabled for peer {}", peer.getId());
                 }
             }
         }else{
-            this.logger.info("Receive a heartbeat event for %d while no longer as a leader", peer.getId());
+            logger.info("Receive a heartbeat event for {} while no longer as a leader", peer.getId());
         }
     }
 
@@ -626,7 +625,7 @@ public class RaftServer implements RaftMessageHandler {
 
     private void stopElectionTimer(){
         if(this.scheduledElection == null){
-            this.logger.warning("Election Timer is never started but is requested to stop, protential a bug");
+            logger.warn("Election Timer is never started but is requested to stop, protential a bug");
             return;
         }
 
@@ -650,7 +649,7 @@ public class RaftServer implements RaftMessageHandler {
         if(this.config.getLogIndex() == 0){
             this.config.setLogIndex(this.logStore.getFirstAvailableIndex());
             this.logStore.append(new LogEntry(this.state.getTerm(), this.config.toBytes(), LogValueType.Configuration));
-            this.logger.info("add initial configuration to log store");
+            logger.info("add initial configuration to log store");
             this.configChanging = true;
         }
 
@@ -723,11 +722,11 @@ public class RaftServer implements RaftMessageHandler {
                 snapshotInAction = true;
                 Snapshot currentSnapshot = this.stateMachine.getLastSnapshot();
                 if(currentSnapshot != null && indexCommitted - currentSnapshot.getLastLogIndex() < this.context.getRaftParameters().getSnapshotDistance()){
-                    this.logger.info("a very recent snapshot is available at index %d, will skip this one", currentSnapshot.getLastLogIndex());
+                    logger.info("a very recent snapshot is available at index {}, will skip this one", currentSnapshot.getLastLogIndex());
                     this.snapshotInProgress.set(0);
                     snapshotInAction = false;
                 }else{
-                    this.logger.info("creating a snapshot for index %d", indexCommitted);
+                    logger.info("creating a snapshot for index {}", indexCommitted);
 
                     // get the latest configuration info
                     ClusterConfiguration config = this.config;
@@ -738,14 +737,14 @@ public class RaftServer implements RaftMessageHandler {
                     if(config.getLogIndex() > indexCommitted && config.getLastLogIndex() > 0 && config.getLastLogIndex() < this.logStore.getStartIndex()){
                         Snapshot lastSnapshot = this.stateMachine.getLastSnapshot();
                         if(lastSnapshot == null){
-                            this.logger.error("No snapshot could be found while no configuration cannot be found in current committed logs, this is a system error, exiting");
+                            logger.error("No snapshot could be found while no configuration cannot be found in current committed logs, this is a system error, exiting");
                             this.stateMachine.exit(-1);
                             return;
                         }
 
                         config = lastSnapshot.getLastConfig();
                     }else if(config.getLogIndex() > indexCommitted && config.getLastLogIndex() == 0){
-                        this.logger.error("BUG!!! stop the system, there must be a configuration at index one");
+                        logger.error("BUG!!! stop the system, there must be a configuration at index one");
                         this.stateMachine.exit(-1);
                     }
 
@@ -755,21 +754,21 @@ public class RaftServer implements RaftMessageHandler {
                     this.stateMachine.createSnapshot(snapshot).whenCompleteAsync((Boolean result, Throwable error) -> {
                         try{
                             if(error != null){
-                                this.logger.error("failed to create a snapshot due to %s", error.getMessage());
+                                logger.error("failed to create a snapshot due to {}", error.getMessage());
                                 return;
                             }
 
                             if(!result.booleanValue()){
-                                this.logger.info("the state machine rejects to create the snapshot");
+                                logger.info("the state machine rejects to create the snapshot");
                                 return;
                             }
 
                             synchronized(this){
-                                this.logger.debug("snapshot created, compact the log store");
+                                logger.debug("snapshot created, compact the log store");
                                 try{
                                     this.logStore.compact(snapshot.getLastLogIndex());
                                 }catch(Throwable ex){
-                                    this.logger.error("failed to compact the log store, no worries, the system still in a good shape", ex);
+                                    logger.error("failed to compact the log store, no worries, the system still in a good shape", ex);
                                 }
                             }
                         }finally{
@@ -780,7 +779,7 @@ public class RaftServer implements RaftMessageHandler {
                 }
             }
         }catch(Throwable error){
-            this.logger.error("failed to compact logs at index %d, due to errors %s", indexCommitted, error.toString());
+            logger.error("failed to compact logs at index {}, due to errors {}", indexCommitted, error.toString());
             if(snapshotInAction){
                 this.snapshotInProgress.compareAndSet(1, 0);
             }
@@ -810,7 +809,7 @@ public class RaftServer implements RaftMessageHandler {
         }
 
         if(lastLogIndex >= currentNextIndex){
-            this.logger.error("Peer's lastLogIndex is too large %d v.s. %d, server exits", lastLogIndex, currentNextIndex);
+            logger.error("Peer's lastLogIndex is too large {} v.s. {}, server exits", lastLogIndex, currentNextIndex);
             this.stateMachine.exit(-1);
         }
 
@@ -822,8 +821,8 @@ public class RaftServer implements RaftMessageHandler {
         long lastLogTerm = this.termForLastLog(lastLogIndex);
         long endIndex = Math.min(currentNextIndex, lastLogIndex + 1 + context.getRaftParameters().getMaximumAppendingSize());
         LogEntry[] logEntries = (lastLogIndex + 1) >= endIndex ? null : this.logStore.getLogEntries(lastLogIndex + 1, endIndex);
-        this.logger.debug(
-                "An AppendEntries Request for %d with LastLogIndex=%d, LastLogTerm=%d, EntriesLength=%d, CommitIndex=%d and Term=%d",
+        logger.debug(
+                "An AppendEntries Request for {} with LastLogIndex={}, LastLogTerm={}, EntriesLength={}, CommitIndex={} and Term={}",
                 peer.getId(),
                 lastLogIndex,
                 lastLogTerm,
@@ -843,8 +842,8 @@ public class RaftServer implements RaftMessageHandler {
     }
 
     private void reconfigure(ClusterConfiguration newConfig){
-        this.logger.debug(
-                "system is reconfigured to have %d servers, last config index: %d, this config index: %d",
+        logger.debug(
+                "system is reconfigured to have {} servers, last config index: {}, this config index: {}",
                 newConfig.getServers().size(),
                 newConfig.getLastLogIndex(),
                 newConfig.getLogIndex());
@@ -871,9 +870,9 @@ public class RaftServer implements RaftMessageHandler {
                 PeerServer peer = new PeerServer(server, context, peerServer -> this.handleHeartbeatTimeout(peerServer));
                 peer.setNextLogIndex(this.logStore.getFirstAvailableIndex());
                 this.peers.put(server.getId(), peer);
-                this.logger.info("server %d is added to cluster", peer.getId());
+                logger.info("server {} is added to cluster", peer.getId());
                 if(this.role == ServerRole.Leader){
-                    this.logger.info("enable heartbeating for server %d", peer.getId());
+                    logger.info("enable heartbeating for server {}", peer.getId());
                     this.enableHeartbeatForPeer(peer);
                     if(this.serverToJoin != null && this.serverToJoin.getId() == peer.getId()){
                         peer.setNextLogIndex(this.serverToJoin.getNextLogIndex());
@@ -887,14 +886,14 @@ public class RaftServer implements RaftMessageHandler {
             if(id == this.id && !this.catchingUp){
                 // this server is removed from cluster
                 this.context.getServerStateManager().saveClusterConfiguration(newConfig);
-                this.logger.info("server has been removed from cluster, step down");
+                logger.info("server has been removed from cluster, step down");
                 this.stateMachine.exit(0);
                 return;
             }
             
             PeerServer peer = this.peers.get(id);
             if(peer == null){
-                this.logger.info("peer %d cannot be found in current peer list", id);
+                logger.info("peer {} cannot be found in current peer list", id);
             } else{
                 if(peer.getHeartbeatTask() != null){
                     peer.getHeartbeatTask().cancel(false);
@@ -902,7 +901,7 @@ public class RaftServer implements RaftMessageHandler {
 
                 peer.enableHeartbeat(false);
                 this.peers.remove(id);
-                this.logger.info("server %d is removed from cluster", id.intValue());
+                logger.info("server {} is removed from cluster", id.intValue());
             }
         }
 
@@ -923,7 +922,7 @@ public class RaftServer implements RaftMessageHandler {
         }else if(request.getMessageType() == RaftMessageType.InstallSnapshotRequest){
             return this.handleInstallSnapshotRequest(request);
         }else{
-            this.logger.error("receive an unknown request %s, for safety, step down.", request.getMessageType().toString());
+            logger.error("receive an unknown request {}, for safety, step down.", request.getMessageType().toString());
             this.stateMachine.exit(-1);
         }
 
@@ -943,7 +942,7 @@ public class RaftServer implements RaftMessageHandler {
             if(this.role == ServerRole.Candidate){
                 this.becomeFollower();
             }else if(this.role == ServerRole.Leader){
-                this.logger.error("Receive InstallSnapshotRequest from another leader(%d) with same term, there must be a bug, server exits", request.getSource());
+                logger.error("Receive InstallSnapshotRequest from another leader({}) with same term, there must be a bug, server exits", request.getSource());
                 this.stateMachine.exit(-1);
             }else{
                 this.restartElectionTimer();
@@ -956,7 +955,7 @@ public class RaftServer implements RaftMessageHandler {
         response.setSource(this.id);
         response.setDestination(request.getSource());
         if(!this.catchingUp && request.getTerm() < this.state.getTerm()){
-            this.logger.info("received an install snapshot request which has lower term than this server, decline the request");
+            logger.info("received an install snapshot request which has lower term than this server, decline the request");
             response.setAccepted(false);
             response.setNextIndex(0);
             return response;
@@ -964,7 +963,7 @@ public class RaftServer implements RaftMessageHandler {
 
         LogEntry logEntries[] = request.getLogEntries();
         if(logEntries == null || logEntries.length != 1 || logEntries[0].getValueType() != LogValueType.SnapshotSyncRequest){
-            this.logger.warning("Receive an invalid InstallSnapshotRequest due to bad log entries or bad log entry value");
+            logger.warn("Receive an invalid InstallSnapshotRequest due to bad log entries or bad log entry value");
             response.setNextIndex(0);
             response.setAccepted(false);
             return response;
@@ -974,7 +973,7 @@ public class RaftServer implements RaftMessageHandler {
 
         // We don't want to apply a snapshot that is older than we have, this may not happen, but just in case
         if(snapshotSyncRequest.getSnapshot().getLastLogIndex() <= this.quickCommitIndex){
-            this.logger.error("Received a snapshot which is older than this server (%d)", this.id);
+            logger.error("Received a snapshot which is older than this server ({})", this.id);
             response.setNextIndex(0);
             response.setAccepted(false);
             return response;
@@ -991,19 +990,19 @@ public class RaftServer implements RaftMessageHandler {
             if(snapshotSyncRequest.isDone()){
                 // Only follower will run this piece of code, but let's check it again
                 if(this.role != ServerRole.Follower){
-                    this.logger.error("bad server role for applying a snapshot, exit for debugging");
+                    logger.error("bad server role for applying a snapshot, exit for debugging");
                     this.stateMachine.exit(-1);
                 }
 
-                this.logger.debug("sucessfully receive a snapshot from leader");
+                logger.debug("sucessfully receive a snapshot from leader");
                 if(this.logStore.compact(snapshotSyncRequest.getSnapshot().getLastLogIndex())){
                     // The state machine will not be able to commit anything before the snapshot is applied, so make this synchronously
                     // with election timer stopped as usually applying a snapshot may take a very long time
                     this.stopElectionTimer();
                     try{
-                        this.logger.info("successfully compact the log store, will now ask the statemachine to apply the snapshot");
+                        logger.info("successfully compact the log store, will now ask the statemachine to apply the snapshot");
                         if(!this.stateMachine.applySnapshot(snapshotSyncRequest.getSnapshot())){
-                            this.logger.error("failed to apply the snapshot after log compacted, to ensure the safety, will shutdown the system");
+                            logger.error("failed to apply the snapshot after log compacted, to ensure the safety, will shutdown the system");
                             this.stateMachine.exit(-1);
                             return false; //should never be reached
                         }
@@ -1013,17 +1012,17 @@ public class RaftServer implements RaftMessageHandler {
                         this.state.setCommitIndex(snapshotSyncRequest.getSnapshot().getLastLogIndex());
                         this.quickCommitIndex = snapshotSyncRequest.getSnapshot().getLastLogIndex();
                         this.context.getServerStateManager().persistState(this.state);
-                        this.logger.info("snapshot is successfully applied");
+                        logger.info("snapshot is successfully applied");
                     }finally{
                         this.restartElectionTimer();
                     }
                 }else{
-                    this.logger.error("failed to compact the log store after a snapshot is received, will ask the leader to retry");
+                    logger.error("failed to compact the log store after a snapshot is received, will ask the leader to retry");
                     return false;
                 }
             }
         }catch(Throwable error){
-            this.logger.error("I/O error %s while saving the snapshot or applying the snapshot, no reason to continue", error.getMessage());
+            logger.error("I/O error {} while saving the snapshot or applying the snapshot, no reason to continue", error.getMessage());
             this.stateMachine.exit(-1);
             return false;
         }
@@ -1037,8 +1036,8 @@ public class RaftServer implements RaftMessageHandler {
             return;
         }
 
-        this.logger.debug(
-                "Receive an extended %s message from peer %d with Result=%s, Term=%d, NextIndex=%d",
+        logger.debug(
+                "Receive an extended {} message from peer {} with Result={}, Term={}, NextIndex={}",
                 response.getMessageType().toString(),
                 response.getSource(),
                 String.valueOf(response.isAccepted()),
@@ -1055,61 +1054,61 @@ public class RaftServer implements RaftMessageHandler {
         }else if(response.getMessageType() == RaftMessageType.JoinClusterResponse){
             if(this.serverToJoin != null){
                 if(response.isAccepted()){
-                    this.logger.debug("new server confirms it will join, start syncing logs to it");
+                    logger.debug("new server confirms it will join, start syncing logs to it");
                     this.syncLogsToNewComingServer(1);
                 }else{
-                    this.logger.debug("new server cannot accept the invitation, give up");
+                    logger.debug("new server cannot accept the invitation, give up");
                 }
             }else{
-                this.logger.debug("no server to join, drop the message");
+                logger.debug("no server to join, drop the message");
             }
         }else if(response.getMessageType() == RaftMessageType.LeaveClusterResponse){
             if(!response.isAccepted()){
-                this.logger.info("peer doesn't accept to stepping down, stop proceeding");
+                logger.info("peer doesn't accept to stepping down, stop proceeding");
                 return;
             }
 
-            this.logger.debug("peer accepted to stepping down, removing this server from cluster");
+            logger.debug("peer accepted to stepping down, removing this server from cluster");
             this.removeServerFromCluster(response.getSource());
         }else if(response.getMessageType() == RaftMessageType.InstallSnapshotResponse){
             if(this.serverToJoin == null){
-                this.logger.info("no server to join, the response must be very old.");
+                logger.info("no server to join, the response must be very old.");
                 return;
             }
 
             if(!response.isAccepted()){
-                this.logger.info("peer doesn't accept the snapshot installation request");
+                logger.info("peer doesn't accept the snapshot installation request");
                 return;
             }
 
             SnapshotSyncContext context = this.serverToJoin.getSnapshotSyncContext();
             if(context == null){
-                this.logger.error("Bug! SnapshotSyncContext must not be null");
+                logger.error("Bug! SnapshotSyncContext must not be null");
                 this.stateMachine.exit(-1);
                 return;
             }
 
             if(response.getNextIndex() >= context.getSnapshot().getSize()){
                 // snapshot is done
-                this.logger.debug("snapshot has been copied and applied to new server, continue to sync logs after snapshot");
+                logger.debug("snapshot has been copied and applied to new server, continue to sync logs after snapshot");
                 this.serverToJoin.setSnapshotInSync(null);
                 this.serverToJoin.setNextLogIndex(context.getSnapshot().getLastLogIndex() + 1);
                 this.serverToJoin.setMatchedIndex(context.getSnapshot().getLastLogIndex());
             }else{
                 context.setOffset(response.getNextIndex());
-                this.logger.debug("continue to send snapshot to new server at offset %d", response.getNextIndex());
+                logger.debug("continue to send snapshot to new server at offset {}", response.getNextIndex());
             }
 
             this.syncLogsToNewComingServer(this.serverToJoin.getNextLogIndex());
         }else{
             // No more response message types need to be handled
-            this.logger.error("received an unexpected response message type %s, for safety, stepping down", response.getMessageType());
+            logger.error("received an unexpected response message type {}, for safety, stepping down", response.getMessageType());
             this.stateMachine.exit(-1);
         }
     }
 
     private void handleExtendedResponseError(Throwable error){
-        this.logger.info("receive an error response from peer server, %s", error.toString());
+        logger.info("receive an error response from peer server, {}", error.toString());
         RpcException rpcError = null;
         if(error instanceof RpcException){
             rpcError = (RpcException)error;
@@ -1118,14 +1117,14 @@ public class RaftServer implements RaftMessageHandler {
         }
 
         if(rpcError != null){
-            this.logger.debug("it's a rpc error, see if we need to retry");
+            logger.debug("it's a rpc error, see if we need to retry");
             final RaftRequestMessage request = rpcError.getRequest();
             if(request.getMessageType() == RaftMessageType.SyncLogRequest || request.getMessageType() == RaftMessageType.JoinClusterRequest || request.getMessageType() == RaftMessageType.LeaveClusterRequest){
                 final PeerServer server = (request.getMessageType() == RaftMessageType.LeaveClusterRequest) ? this.peers.get(request.getDestination()) : this.serverToJoin;
                 if(server != null){
                     if(server.getCurrentHeartbeatInterval() >= this.context.getRaftParameters().getMaxHeartbeatInterval()){
                         if(request.getMessageType() == RaftMessageType.LeaveClusterRequest){
-                            this.logger.info("rpc failed again for the removing server (%d), will remove this server directly", server.getId());
+                            logger.info("rpc failed again for the removing server ({}), will remove this server directly", server.getId());
                             
                             /**
                              * In case of there are only two servers in the cluster, it safe to remove the server directly from peers
@@ -1140,7 +1139,7 @@ public class RaftServer implements RaftMessageHandler {
                             if(this.peers.size() == 1){
                                 PeerServer peer = this.peers.get(server.getId());
                                 if(peer == null){
-                                    this.logger.info("peer %d cannot be found in current peer list", id);
+                                    logger.info("peer {} cannot be found in current peer list", id);
                                 } else{
                                     if(peer.getHeartbeatTask() != null){
                                         peer.getHeartbeatTask().cancel(false);
@@ -1148,26 +1147,26 @@ public class RaftServer implements RaftMessageHandler {
 
                                     peer.enableHeartbeat(false);
                                     this.peers.remove(server.getId());
-                                    this.logger.info("server %d is removed from cluster", server.getId());
+                                    logger.info("server {} is removed from cluster", server.getId());
                                 }
                             }
                             
                             this.removeServerFromCluster(server.getId());
                         }else{
-                            this.logger.info("rpc failed again for the new coming server (%d), will stop retry for this server", server.getId());
+                            logger.info("rpc failed again for the new coming server ({}), will stop retry for this server", server.getId());
                             this.configChanging = false;
                             this.serverToJoin = null;
                         }
                     }else{
                         // reuse the heartbeat interval value to indicate when to stop retrying, as rpc backoff is the same
-                        this.logger.debug("retry the request");
+                        logger.debug("retry the request");
                         server.slowDownHeartbeating();
                         final RaftServer self = this;
                         this.context.getScheduledExecutor().schedule(new Callable<Void>(){
 
                             @Override
                             public Void call() throws Exception {
-                                self.logger.debug("retrying the request %s", request.getMessageType().toString());
+                                self.logger.debug("retrying the request {}", request.getMessageType().toString());
                                 server.SendRequest(request).whenCompleteAsync((RaftResponseMessage furtherResponse, Throwable furtherError) -> {
                                     self.handleExtendedResponse(furtherResponse, furtherError);
                                 }, self.context.getScheduledExecutor());
@@ -1189,30 +1188,30 @@ public class RaftServer implements RaftMessageHandler {
         response.setNextIndex(this.logStore.getFirstAvailableIndex());
         response.setAccepted(false);
         if(logEntries.length != 1 || logEntries[0].getValue() == null || logEntries[0].getValue().length != Integer.BYTES){
-            this.logger.info("bad remove server request as we are expecting one log entry with value type of Integer");
+            logger.info("bad remove server request as we are expecting one log entry with value type of Integer");
             return response;
         }
 
         if(this.role != ServerRole.Leader){
-            this.logger.info("this is not a leader, cannot handle RemoveServerRequest");
+            logger.info("this is not a leader, cannot handle RemoveServerRequest");
             return response;
         }
 
         if(this.configChanging){
             // the previous config has not committed yet
-            this.logger.info("previous config has not committed yet");
+            logger.info("previous config has not committed yet");
             return response;
         }
 
         int serverId = ByteBuffer.wrap(logEntries[0].getValue()).getInt();
         if(serverId == this.id){
-            this.logger.info("cannot request to remove leader");
+            logger.info("cannot request to remove leader");
             return response;
         }
 
         PeerServer peer = this.peers.get(serverId);
         if(peer == null){
-            this.logger.info("server %d does not exist", serverId);
+            logger.info("server {} does not exist", serverId);
             return response;
         }
 
@@ -1241,24 +1240,24 @@ public class RaftServer implements RaftMessageHandler {
         response.setNextIndex(this.logStore.getFirstAvailableIndex());
         response.setAccepted(false);
         if(logEntries.length != 1 || logEntries[0].getValueType() != LogValueType.ClusterServer){
-            this.logger.info("bad add server request as we are expecting one log entry with value type of ClusterServer");
+            logger.info("bad add server request as we are expecting one log entry with value type of ClusterServer");
             return response;
         }
 
         if(this.role != ServerRole.Leader){
-            this.logger.info("this is not a leader, cannot handle AddServerRequest");
+            logger.info("this is not a leader, cannot handle AddServerRequest");
             return response;
         }
 
         ClusterServer server = new ClusterServer(ByteBuffer.wrap(logEntries[0].getValue()));
         if(this.peers.containsKey(server.getId()) || this.id == server.getId()){
-            this.logger.warning("the server to be added has a duplicated id with existing server %d", server.getId());
+            logger.warn("the server to be added has a duplicated id with existing server {}", server.getId());
             return response;
         }
 
         if(this.configChanging){
             // the previous config has not committed yet
-            this.logger.info("previous config has not committed yet");
+            logger.info("previous config has not committed yet");
             return response;
         }
 
@@ -1286,12 +1285,12 @@ public class RaftServer implements RaftMessageHandler {
                 logEntries[0].getValueType() != LogValueType.LogPack ||
                 logEntries[0].getValue() == null ||
                 logEntries[0].getValue().length == 0){
-            this.logger.info("receive an invalid LogSyncRequest as the log entry value doesn't meet the requirements");
+            logger.info("receive an invalid LogSyncRequest as the log entry value doesn't meet the requirements");
             return response;
         }
 
         if(!this.catchingUp){
-            this.logger.debug("This server is ready for cluster, ignore the request");
+            logger.debug("This server is ready for cluster, ignore the request");
             return response;
         }
 
@@ -1307,7 +1306,7 @@ public class RaftServer implements RaftMessageHandler {
         int gap = (int)(this.quickCommitIndex - startIndex);
         if(gap < this.context.getRaftParameters().getLogSyncStopGap()){
 
-            this.logger.info("LogSync is done for server %d with log gap %d, now put the server into cluster", this.serverToJoin.getId(), gap);
+            logger.info("LogSync is done for server {} with log gap {}, now put the server into cluster", this.serverToJoin.getId(), gap);
             ClusterConfiguration newConfig = new ClusterConfiguration();
             newConfig.setLastLogIndex(this.config.getLogIndex());
             newConfig.setLogIndex(this.logStore.getFirstAvailableIndex());
@@ -1370,12 +1369,12 @@ public class RaftServer implements RaftMessageHandler {
                 logEntries[0].getValueType() != LogValueType.Configuration ||
                 logEntries[0].getValue() == null ||
                 logEntries[0].getValue().length == 0){
-            this.logger.info("receive an invalid JoinClusterRequest as the log entry value doesn't meet the requirements");
+            logger.info("receive an invalid JoinClusterRequest as the log entry value doesn't meet the requirements");
             return response;
         }
 
         if(this.catchingUp){
-            this.logger.info("this server is already in log syncing mode");
+            logger.info("this server is already in log syncing mode");
             return response;
         }
 
@@ -1422,7 +1421,7 @@ public class RaftServer implements RaftMessageHandler {
             }
         }
 
-        this.logger.info("removed a server from configuration and save the configuration to log store at %d", newConfig.getLogIndex());
+        logger.info("removed a server from configuration and save the configuration to log store at {}", newConfig.getLogIndex());
         this.configChanging = true;
         this.logStore.append(new LogEntry(this.state.getTerm(), newConfig.toBytes(), LogValueType.Configuration));
         this.requestAppendEntries();
@@ -1442,18 +1441,18 @@ public class RaftServer implements RaftMessageHandler {
                 snapshot = lastSnapshot;
 
                 if(snapshot == null || lastLogIndex > snapshot.getLastLogIndex()){
-                    this.logger.error("system is running into fatal errors, failed to find a snapshot for peer %d(snapshot null: %s, snapshot doesn't contais lastLogIndex: %s)", peer.getId(), String.valueOf(snapshot == null), String.valueOf(lastLogIndex > snapshot.getLastLogIndex()));
+                    logger.error("system is running into fatal errors, failed to find a snapshot for peer {}(snapshot null: {}, snapshot doesn't contais lastLogIndex: {})", peer.getId(), String.valueOf(snapshot == null), String.valueOf(lastLogIndex > snapshot.getLastLogIndex()));
                     this.stateMachine.exit(-1);
                     return null;
                 }
 
                 if(snapshot.getSize() < 1L){
-                    this.logger.error("invalid snapshot, this usually means a bug from state machine implementation, stop the system to prevent further errors");
+                    logger.error("invalid snapshot, this usually means a bug from state machine implementation, stop the system to prevent further errors");
                     this.stateMachine.exit(-1);
                     return null;
                 }
 
-                this.logger.info("trying to sync snapshot with last index %d to peer %d", snapshot.getLastLogIndex(), peer.getId());
+                logger.info("trying to sync snapshot with last index {} to peer {}", snapshot.getLastLogIndex(), peer.getId());
                 peer.setSnapshotInSync(snapshot);
             }
 
@@ -1464,13 +1463,13 @@ public class RaftServer implements RaftMessageHandler {
             try{
                 int sizeRead = this.stateMachine.readSnapshotData(snapshot, offset, data);
                 if(sizeRead < data.length){
-                    this.logger.error("only %d bytes could be read from snapshot while %d bytes are expected, should be something wrong" , sizeRead, data.length);
+                    logger.error("only {} bytes could be read from snapshot while {} bytes are expected, should be something wrong" , sizeRead, data.length);
                     this.stateMachine.exit(-1);
                     return null;
                 }
             }catch(Throwable error){
                 // if there is i/o error, no reason to continue
-                this.logger.error("failed to read snapshot data due to io error %s", error.toString());
+                logger.error("failed to read snapshot data due to io error {}", error.toString());
                 this.stateMachine.exit(-1);
                 return null;
             }
@@ -1584,7 +1583,7 @@ public class RaftServer implements RaftMessageHandler {
 
             rpcClient.send(request).whenCompleteAsync((RaftResponseMessage response, Throwable err) -> {
                 if(err != null){
-                    this.server.logger.info("Received an rpc error %s while sending a request to server (%d)", err.getMessage(), leaderId);
+                    this.server.logger.info("Received an rpc error {} while sending a request to server ({})", err.getMessage(), leaderId);
                     result.complete(false);
                 }else{
                     result.complete(response.isAccepted());
@@ -1633,7 +1632,7 @@ public class RaftServer implements RaftMessageHandler {
                         }else if(logEntry.getValueType() == LogValueType.Configuration){
                             synchronized(server){
                                 ClusterConfiguration newConfig = ClusterConfiguration.fromBytes(logEntry.getValue());
-                                server.logger.info("configuration at index %d is committed", newConfig.getLogIndex());
+                                server.logger.info("configuration at index {} is committed", newConfig.getLogIndex());
                                 server.context.getServerStateManager().saveClusterConfiguration(newConfig);
                                 server.configChanging = false;
                                 if(server.config.getLogIndex() < newConfig.getLogIndex()){
@@ -1653,7 +1652,8 @@ public class RaftServer implements RaftMessageHandler {
 
                     server.context.getServerStateManager().persistState(server.state);
                 }catch(Throwable error){
-                    server.logger.error("error %s encountered for committing thread, which should not happen, according to this, state machine may not have further progress, stop the system", error, error.getMessage());
+                    server.logger.error("error {} encountered for committing thread, which should not happen, " +
+                            "according to this, state machine may not have further progress, stop the system {}", error, error.getMessage());
                     server.stateMachine.exit(-1);
                 }
             }

@@ -17,6 +17,8 @@
 
 package net.data.technology.jraft;
 
+import org.slf4j.LoggerFactory;
+
 import java.nio.ByteBuffer;
 import java.util.Calendar;
 import java.util.HashMap;
@@ -27,23 +29,21 @@ import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
 
 public class RaftClient {
-
+    static final private org.slf4j.Logger logger = LoggerFactory.getLogger(RaftClient.class);
     private Map<Integer, RpcClient> rpcClients = new HashMap<Integer, RpcClient>();
     private RpcClientFactory rpcClientFactory;
     private ClusterConfiguration configuration;
-    private Logger logger;
     private Timer timer;
     private int leaderId;
     private boolean randomLeader;
     private Random random;
 
-    public RaftClient(RpcClientFactory rpcClientFactory, ClusterConfiguration configuration, LoggerFactory loggerFactory){
+    public RaftClient(RpcClientFactory rpcClientFactory, ClusterConfiguration configuration){
         this.random = new Random(Calendar.getInstance().getTimeInMillis());
         this.rpcClientFactory = rpcClientFactory;
         this.configuration = configuration;
         this.leaderId = configuration.getServers().get(this.random.nextInt(configuration.getServers().size())).getId();
         this.randomLeader = true;
-        this.logger = loggerFactory.getLogger(getClass());
         this.timer = new Timer();
     }
 

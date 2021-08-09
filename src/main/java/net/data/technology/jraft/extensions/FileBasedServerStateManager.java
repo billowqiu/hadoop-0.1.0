@@ -29,9 +29,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
@@ -39,34 +36,35 @@ import net.data.technology.jraft.ClusterConfiguration;
 import net.data.technology.jraft.SequentialLogStore;
 import net.data.technology.jraft.ServerState;
 import net.data.technology.jraft.ServerStateManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FileBasedServerStateManager implements ServerStateManager {
-
     private static final String STATE_FILE = "server.state";
     private static final String CONFIG_FILE = "config.properties";
     private static final String CLUSTER_CONFIG_FILE = "cluster.json";
 
     private RandomAccessFile serverStateFile;
     private FileBasedSequentialLogStore logStore;
-    private Logger logger;
+    static final private Logger logger = LoggerFactory.getLogger(FileBasedServerStateManager.class);
     private Path container;
     private int serverId;
 
     public FileBasedServerStateManager(String dataDirectory){
         this.logStore = new FileBasedSequentialLogStore(dataDirectory);
         this.container = Paths.get(dataDirectory);
-        this.logger = LogManager.getLogger(getClass());
         try{
             Properties props = new Properties();
             FileInputStream configInput = new FileInputStream(this.container.resolve(CONFIG_FILE).toString());
             props.load(configInput);
             String serverIdValue = props.getProperty("server.id");
             this.serverId = serverIdValue == null || serverIdValue.length() == 0 ? -1 : Integer.parseInt(serverIdValue.trim());
+            logger.info("local serverid {}", this.serverId);
             configInput.close();
             this.serverStateFile = new RandomAccessFile(this.container.resolve(STATE_FILE).toString(), "rw");
             this.serverStateFile.seek(0);
         }catch(IOException exception){
-            this.logger.error("failed to create/open server state file", exception);
+            logger.error("failed to create/open server state file", exception);
             throw new IllegalArgumentException("cannot create/open the state file", exception);
         }
     }
@@ -81,7 +79,7 @@ public class FileBasedServerStateManager implements ServerStateManager {
             ClusterConfiguration config = gson.fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), ClusterConfiguration.class);
             return config;
         }catch(IOException error){
-            this.logger.error("failed to read cluster configuration", error);
+            logger.error("failed to read cluster configuration", error);
             throw new RuntimeException("failed to read in cluster config", error);
         }finally{
             if(stream != null){
@@ -104,7 +102,7 @@ public class FileBasedServerStateManager implements ServerStateManager {
             output.flush();
             output.close();
         } catch (IOException error) {
-            this.logger.error("failed to save cluster config to file", error);
+            logger.error("failed to save cluster config to file", error);
         }
     }
 
@@ -159,7 +157,7 @@ public class FileBasedServerStateManager implements ServerStateManager {
             this.serverStateFile.close();
             this.logStore.close();
         }catch(IOException exception){
-            this.logger.info("failed to shutdown the server state manager due to io error", exception);
+            logger.info("failed to shutdown the server state manager due to io error", exception);
         }
     }
 
@@ -172,11 +170,11 @@ public class FileBasedServerStateManager implements ServerStateManager {
             }
 
             if(offset < buffer.length){
-                this.logger.error(String.format("only %d bytes are read while %d bytes are desired, bad file", offset, buffer.length));
+                logger.error(String.format("only %d bytes are read while %d bytes are desired, bad file", offset, buffer.length));
                 throw new RuntimeException("bad file, insufficient file data for reading");
             }
         }catch(IOException exception){
-            this.logger.error("failed to read and fill the buffer", exception);
+            logger.error("failed to read and fill the buffer", exception);
             throw new RuntimeException(exception.getMessage(), exception);
         }
     }

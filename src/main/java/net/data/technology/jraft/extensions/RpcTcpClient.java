@@ -29,8 +29,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import net.data.technology.jraft.RaftRequestMessage;
 import net.data.technology.jraft.RaftResponseMessage;
@@ -45,11 +45,10 @@ public class RpcTcpClient implements RpcClient {
     private AtomicInteger readers;
     private AtomicInteger writers;
     private InetSocketAddress remote;
-    private Logger logger;
+    static final private Logger logger = LoggerFactory.getLogger(RpcTcpClient.class);
 
     public RpcTcpClient(InetSocketAddress remote, ExecutorService executorService){
         this.remote = remote;
-        this.logger = LogManager.getLogger(getClass());
         this.readTasks = new ConcurrentLinkedQueue<AsyncTask<ByteBuffer>>();
         this.writeTasks = new ConcurrentLinkedQueue<AsyncTask<RaftRequestMessage>>();
         this.readers = new AtomicInteger(0);
@@ -57,14 +56,14 @@ public class RpcTcpClient implements RpcClient {
         try{
             this.channelGroup = AsynchronousChannelGroup.withThreadPool(executorService);
         }catch(IOException err){
-            this.logger.error("failed to create channel group", err);
+            logger.error("failed to create channel group", err);
             throw new RuntimeException("failed to create the channel group due to errors.");
         }
     }
 
     @Override
     public synchronized CompletableFuture<RaftResponseMessage> send(final RaftRequestMessage request) {
-        this.logger.debug(String.format("trying to send message %s to server %d at endpoint %s", request.getMessageType().toString(), request.getDestination(), this.remote.toString()));
+        logger.debug(String.format("trying to send message {} to server {} at endpoint {}", request.getMessageType().toString(), request.getDestination(), this.remote.toString()));
         CompletableFuture<RaftResponseMessage> result = new CompletableFuture<RaftResponseMessage>();
         if(this.connection == null || !this.connection.isOpen()){
             try{
@@ -87,7 +86,7 @@ public class RpcTcpClient implements RpcClient {
         if(!skipQueueing){
             int writerCount = this.writers.getAndIncrement();
             if(writerCount > 0){
-                this.logger.debug("there is a pending write, queue this write task");
+                logger.debug("there is a pending write, queue this write task");
                 this.writeTasks.add(task);
                 return;
             }
@@ -108,7 +107,7 @@ public class RpcTcpClient implements RpcClient {
 
                 int waitingWriters = this.writers.decrementAndGet();
                 if(waitingWriters > 0){
-                    this.logger.debug("there are pending writers in queue, will try to process them");
+                    logger.debug("there are pending writers in queue, will try to process them");
                     AsyncTask<RaftRequestMessage> pendingTask = null;
                     while((pendingTask = this.writeTasks.poll()) == null);
                     this.sendAndRead(pendingTask, true);
@@ -125,7 +124,7 @@ public class RpcTcpClient implements RpcClient {
         if(!skipQueueing){
             int readerCount = this.readers.getAndIncrement();
             if(readerCount > 0){
-                this.logger.debug("there is a pending read, queue this read task");
+                logger.debug("there is a pending read, queue this read task");
                 this.readTasks.add(task);
                 return;
             }
@@ -143,7 +142,7 @@ public class RpcTcpClient implements RpcClient {
 
             int waitingReaders = this.readers.decrementAndGet();
             if(waitingReaders > 0){
-                this.logger.debug("there are pending readers in queue, will try to process them");
+                logger.debug("there are pending readers in queue, will try to process them");
                 AsyncTask<ByteBuffer> pendingTask = null;
                 while((pendingTask = this.readTasks.poll()) == null);
                 this.readResponse(pendingTask, true);
@@ -151,7 +150,7 @@ public class RpcTcpClient implements RpcClient {
         });
 
         try{
-            this.logger.debug("reading response from socket...");
+            logger.debug("reading response from socket...");
             AsyncUtility.readFromChannel(this.connection, task.input, task, handler);
         }catch(Exception readError){
             logger.info("failed to read from socket", readError);
@@ -162,21 +161,21 @@ public class RpcTcpClient implements RpcClient {
 
     private <V, I> CompletionHandler<V, AsyncTask<I>> handlerFrom(BiConsumer<V, AsyncTask<I>> completed) {
         return AsyncUtility.handlerFrom(completed, (Throwable error, AsyncTask<I> context) -> {
-                        this.logger.info("socket error", error);
+                        logger.info("socket error", error);
                         context.future.completeExceptionally(error);
                         closeSocket();
                     });
     }
 
     private synchronized void closeSocket(){
-        this.logger.debug("close the socket due to errors");
+        logger.debug("close the socket due to errors");
         try{
             if(this.connection != null){
                 this.connection.close();
                 this.connection = null;
             }
         }catch(IOException ex){
-            this.logger.info("failed to close socket", ex);
+            logger.info("failed to close socket", ex);
         }
 
         while(true){

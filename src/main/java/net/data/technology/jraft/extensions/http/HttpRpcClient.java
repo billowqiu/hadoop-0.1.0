@@ -28,8 +28,9 @@ import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -42,13 +43,12 @@ public class HttpRpcClient implements RpcClient {
     private String serverUrl;
     private CloseableHttpAsyncClient httpClient;
     private Gson gson;
-    private Logger logger;
+    static final private Logger logger = LoggerFactory.getLogger(HttpRpcClient.class);
 
     public HttpRpcClient(String serverUrl){
         this.serverUrl = serverUrl;
         this.httpClient = HttpAsyncClients.createDefault();
         this.gson = new GsonBuilder().create();
-        this.logger = LogManager.getLogger(getClass());
     }
 
     @Override
