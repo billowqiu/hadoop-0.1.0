@@ -46,11 +46,30 @@ class FSDirectory implements FSConstants {
     private static final byte OP_DELETE = 2;
     private static final byte OP_MKDIR = 3;
 
+    private static String opToString(byte op) {
+        switch (op) {
+            case OP_ADD: {
+                return "OP_ADD";
+            }
+            case OP_DELETE: {
+                return "OP_DELETE";
+            }
+            case OP_RENAME: {
+                return "OP_RENAME";
+            }
+            case OP_MKDIR: {
+                return "OP_MKDIR";
+            }
+        }
+        logger.error("UNKNOW OP");
+        return "Never seen opcode " + op;
+    }
+
     /******************************************************
      * We keep an in-memory representation of the file/block
      * hierarchy.
      ******************************************************/
-    class INode {
+    static class INode {
         final static String ROOT_NAME = "";
         public String name;     // path name
         public INode parent;    // parent inode
@@ -327,12 +346,25 @@ class FSDirectory implements FSConstants {
      * "re-save" and consolidate the edit-logs
      */
     boolean loadFSImage(File fsdir, File edits) throws IOException {
+        logger.info("loadFSImage fsdir {}, edits {}", fsdir.getAbsolutePath(), edits.getAbsoluteFile());
         //
         // Atomic move sequence, to recover from interrupted save
         //
         File curFile = new File(fsdir, FS_IMAGE);
         File newFile = new File(fsdir, NEW_FS_IMAGE);
         File oldFile = new File(fsdir, OLD_FS_IMAGE);
+
+//        //
+//        // Atomic move sequence
+//        //
+//        // 1.  Move cur to old
+//        curFile.renameTo(oldFile);
+//        // 2.  Move new to cur
+//        newFile.renameTo(curFile);
+//        // 3.  Remove pending-edits file (it's been integrated with newFile)
+//        edits.delete();
+//        // 4.  Delete old
+//        oldFile.delete();
 
         // Maybe we were interrupted between 2 and 4
         if (oldFile.exists() && curFile.exists()) {
@@ -446,6 +478,7 @@ class FSDirectory implements FSConstants {
      * Save the contents of the FS image
      */
     void saveFSImage(File fullimage, File edits) throws IOException {
+        logger.info("saveFSImage fullimage {}, edits {}", fullimage.getAbsolutePath(), edits.getAbsoluteFile());
         File curFile = new File(fullimage, FS_IMAGE);
         File newFile = new File(fullimage, NEW_FS_IMAGE);
         File oldFile = new File(fullimage, OLD_FS_IMAGE);
@@ -455,6 +488,7 @@ class FSDirectory implements FSConstants {
         //
         DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(newFile)));
         try {
+            logger.info("save rootDir to newFile {}", newFile.getAbsolutePath());
             out.writeInt(rootDir.numItemsInTree() - 1);
             rootDir.saveImage("", out);
         } finally {
@@ -466,31 +500,39 @@ class FSDirectory implements FSConstants {
         //
         // 1.  Move cur to old
         curFile.renameTo(oldFile);
-        
+        logger.info("curFile {} rename to oldFile {}", curFile.getAbsolutePath(), oldFile.getAbsolutePath());
+
         // 2.  Move new to cur
         newFile.renameTo(curFile);
+        logger.info("newFile {} rename to curFile {}", newFile.getAbsolutePath(), curFile.getAbsolutePath());
 
         // 3.  Remove pending-edits file (it's been integrated with newFile)
         edits.delete();
+        logger.info("delete edits {}", edits.getAbsolutePath());
         
         // 4.  Delete old
         oldFile.delete();
+        logger.info("delete oldFile {}", oldFile.getAbsolutePath());
     }
 
     /**
      * Write an operation to the edit log
      */
     void logEdit(byte op, Writable w1, Writable w2) {
+        logger.info("{}", FSDirectory.opToString(op));
         synchronized (editlog) {
             try {
                 editlog.write(op);
                 if (w1 != null) {
+                    logger.info("w1 {}", w1.toString());
                     w1.write(editlog);
                 }
                 if (w2 != null) {
+                    logger.info("w2 {}", w2.toString());
                     w2.write(editlog);
                 }
             } catch (IOException ie) {
+                logger.error("write edit log error {}", ie.getCause().toString());
             }
         }
     }

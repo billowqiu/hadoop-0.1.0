@@ -15,14 +15,19 @@
  */
 package org.apache.hadoop.dfs;
 
+import org.apache.hadoop.fs.FileUtil;
+import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.io.*;
 import org.apache.hadoop.ipc.*;
 import org.apache.hadoop.conf.*;
-import org.apache.hadoop.util.LogFormatter;
 
 import java.io.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.apache.hadoop.dfs.raft.JournalRaftServer;
+import org.apache.hadoop.dfs.proto.Journal;
+import java.net.URL;
 
 /**********************************************************
  * NameNode serves as both directory namespace manager and
@@ -57,10 +62,11 @@ import org.slf4j.LoggerFactory;
  * @author Mike Cafarella
  **********************************************************/
 public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
-    static private Logger logger = LoggerFactory.getLogger(NameNode.class);
+    static final private Logger logger = LoggerFactory.getLogger(NameNode.class);
 
     private FSNamesystem namesystem;
     private Server server;
+    private JournalRaftServer journalRaftServer;
     private int handlerCount = 2;
 
     /** only used for testing purposes  */
@@ -69,7 +75,28 @@ public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
     /** Format a new filesystem.  Destroys any filesystem that may already
      * exist at this location.  **/
     public static void format(Configuration conf) throws IOException {
-      FSDirectory.format(getDir(conf), conf);
+        FSDirectory.format(getDir(conf), conf);
+        // format raft dir
+        String raftDir = conf.get("dfs.name.raft_dir", "");
+        if (raftDir.isEmpty()) {
+            System.err.println("Format aborted, raft dir is empty.");
+            System.exit(1);
+        }
+        File raft = new File(raftDir);
+        if (!((!raft.exists() || FileUtil.fullyDelete(raft, conf)) && raft.mkdir())) {
+            throw new IOException("Unable to format raft: "+raftDir);
+        }
+        // cp raft config
+        URL u = conf.getResource("cluster.json");
+        System.err.println("cp raft cluster config " + u);
+        File src = new File(u.getFile());
+        File dst = new File(raftDir+"/cluster.json");
+        FileUtil.copyContents(new LocalFileSystem(conf), src, dst, true, conf);
+        u = conf.getResource("config.properties");
+        System.err.println("cp raft cluster id config " + u);
+        src = new File(u.getFile());
+        dst = new File(raftDir+"/config.properties");
+        FileUtil.copyContents(new LocalFileSystem(conf), src, dst, true, conf);
     }
 
     /**
@@ -89,6 +116,9 @@ public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
         this.handlerCount = conf.getInt("dfs.namenode.handler.count", 10);
         this.server = RPC.getServer(this, port, handlerCount, false, conf);
         this.server.start();
+        // start raft server
+        this.journalRaftServer = new JournalRaftServer(conf.get("dfs.name.raft_dir", ""), namesystem);
+        this.journalRaftServer.start();
     }
 
     /** Return the configured directory where name data is stored. */
@@ -236,13 +266,32 @@ public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
     /**
      */
     public boolean rename(String src, String dst) throws IOException {
-        return namesystem.renameTo(new UTF8(src), new UTF8(dst));
+        Journal.RenameEntry renameEntry = Journal.RenameEntry.newBuilder().
+                setSrc(src).setDst(dst).build();
+        Journal.JournalEntry journalEntry = Journal.JournalEntry.newBuilder().
+                setType(Journal.EntryType.RENAME).
+                setRenameEntry(renameEntry).
+                build();
+        JournalRaftServer.Task task = journalRaftServer.new Task(journalEntry.toByteArray());
+        // submit to raft
+        return journalRaftServer.apply(task);
+//        return namesystem.renameTo(new UTF8(src), new UTF8(dst));
     }
 
     /**
      */
     public boolean delete(String src) throws IOException {
-        return namesystem.delete(new UTF8(src));
+        Journal.DeleteEntry deleteEntry = Journal.DeleteEntry.newBuilder().
+                setSrc(src).build();
+        Journal.JournalEntry journalEntry = Journal.JournalEntry.newBuilder().
+                setType(Journal.EntryType.DELETE).
+                setDeleteEntry(deleteEntry).
+                build();
+        JournalRaftServer.Task task = journalRaftServer.new Task(journalEntry.toByteArray());
+        // submit to raft
+        return journalRaftServer.apply(task);
+
+//        return namesystem.delete(new UTF8(src));
     }
 
     /**
@@ -260,7 +309,16 @@ public class NameNode implements ClientProtocol, DatanodeProtocol, FSConstants {
     /**
      */
     public boolean mkdirs(String src) throws IOException {
-        return namesystem.mkdirs(new UTF8(src));
+        Journal.MkdirEntry mkdirEntry = Journal.MkdirEntry.newBuilder().
+                    setSrc(src).build();
+        Journal.JournalEntry journalEntry = Journal.JournalEntry.newBuilder().
+                setType(Journal.EntryType.MKDIR).
+                setMkdirEntry(mkdirEntry).
+                build();
+        JournalRaftServer.Task task = journalRaftServer.new Task(journalEntry.toByteArray());
+        // submit to raft
+        return journalRaftServer.apply(task);
+//        return namesystem.mkdirs(new UTF8(src));
     }
 
     /**

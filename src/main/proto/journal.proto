@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package org.apache.hadoop.dfs;
+option java_package = "org.apache.hadoop.dfs.proto";
+
+enum EntryType {
+    RENAME = 0;
+    DELETE = 1;
+    MKDIR = 2;
+}
+
+message RenameEntry {
+    string src = 1;
+    string dst = 2;
+}
+
+message DeleteEntry {
+    string src = 1;
+}
+
+message MkdirEntry {
+    string src = 1;
+}
+
+message JournalEntry {
+    EntryType type = 1;
+    RenameEntry renameEntry = 2;
+    DeleteEntry deleteEntry = 3;
+    MkdirEntry mkdirEntry = 4;
+}

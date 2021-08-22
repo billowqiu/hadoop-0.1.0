@@ -35,7 +35,7 @@ import java.util.logging.*;
  * 4)  machine --> blocklist (inverted #2)
  * 5)  LRU cache of updated-heartbeat machines
  ***************************************************/
-class FSNamesystem implements FSConstants {
+public class FSNamesystem implements FSConstants {
     public static final Logger LOG = LogFormatter.getLogger("org.apache.hadoop.fs.FSNamesystem");
 
     //

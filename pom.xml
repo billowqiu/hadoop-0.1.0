@@ -16,6 +16,8 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
+    <protobuf-maven-plugin.version>0.5.1</protobuf-maven-plugin.version>
+    <protobuf-compile.version>3.0.0</protobuf-compile.version>
   </properties>
 
   <dependencies>
@@ -47,6 +49,12 @@
       <version>5.1.6</version>
     </dependency>
     -->
+    <dependency>
+      <groupId>com.google.protobuf</groupId>
+      <artifactId>protobuf-java</artifactId>
+      <version>3.0.0</version>
+    </dependency>
+
     <dependency>
       <groupId>org.iq80.leveldb</groupId>
       <artifactId>leveldb-api</artifactId>
@@ -87,7 +95,39 @@
   </dependencies>
 
   <build>
+    <extensions>
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>1.7.0</version>
+      </extension>
+    </extensions>
     <plugins>
+      <plugin>
+        <groupId>org.xolstice.maven.plugins</groupId>
+        <artifactId>protobuf-maven-plugin</artifactId>
+        <version>${protobuf-maven-plugin.version}</version>
+        <extensions>true</extensions>
+        <executions>
+          <execution>
+            <id>compile-protoc-3</id>
+            <goals>
+              <goal>compile</goal>
+              <goal>test-compile</goal>
+            </goals>
+            <configuration>
+              <attachProtoSources>false</attachProtoSources>
+              <protocArtifact>
+                com.google.protobuf:protoc:${protobuf-compile.version}:exe:${os.detected.classifier}
+              </protocArtifact>
+              <protoSourceRoot>${basedir}/src/main/proto</protoSourceRoot>
+              <!-- <outputDirectory>target/generated-sources/java</outputDirectory> -->
+              <clearOutputDirectory>false</clearOutputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>

@@ -60,7 +60,7 @@
 
 <property>
   <name>fs.default.name</name>
-  <value>127.0.0.1:8866</value>
+  <value>127.0.0.1:10866</value>
   <description>The name of the default file system.  Either the
   literal string "local" or a host:port for DFS.</description>
 </property>
@@ -75,14 +75,14 @@
 
 <property>
   <name>dfs.name.dir</name>
-  <value>dfs/name</value>
+  <value>dfs-2/name</value>
   <description>Determines where on the local filesystem the DFS name node
       should store the name table.</description>
 </property>
 
 <property>
   <name>dfs.name.raft_dir</name>
-  <value>dfs/name/raft</value>
+  <value>dfs-2/name/raft</value>
   <description>raft conf and data dir</description>
 </property>
 

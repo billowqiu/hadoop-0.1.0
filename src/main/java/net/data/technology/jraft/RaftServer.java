@@ -304,6 +304,8 @@ public class RaftServer implements RaftMessageHandler {
     }
 
     private RaftResponseMessage handleClientRequest(RaftRequestMessage request){
+        logger.info("handle client request {}", request.toString());
+
         RaftResponseMessage response = new RaftResponseMessage();
         response.setMessageType(RaftMessageType.AppendEntriesResponse);
         response.setSource(this.id);
@@ -313,6 +315,7 @@ public class RaftServer implements RaftMessageHandler {
         long term;
         synchronized(this){
             if(this.role != ServerRole.Leader){
+                logger.warn("this server is not leader");
                 response.setAccepted(false);
                 return response;
             }
@@ -323,7 +326,6 @@ public class RaftServer implements RaftMessageHandler {
         LogEntry[] logEntries = request.getLogEntries();
         if(logEntries != null && logEntries.length > 0){
             for(int i = 0; i < logEntries.length; ++i){
-                
                 this.stateMachine.preCommit(this.logStore.append(new LogEntry(term, logEntries[i].getValue())), logEntries[i].getValue());
             }
         }
